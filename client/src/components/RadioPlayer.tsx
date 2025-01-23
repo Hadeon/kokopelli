@@ -9,13 +9,13 @@ const RadioPlayer: React.FC = () => {
     useEffect(() => {
         // Fetch stations from the backend
         axios.get("http://127.0.0.1:5000/stations").then((response) => {
-            setStations(response.data);
+            setStations(response.data as any);
         });
     }, []);
 
     const handleSearch = () => {
         axios.get(`http://127.0.0.1:5000/stations?search=${search}`).then((response) => {
-            setStations(response.data);
+            setStations(response.data as any);
         });
     };
 
