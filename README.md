@@ -12,21 +12,21 @@ This is a simple radio player application (for now).
    ```
 
 2. **Create a virtual environment**: 
-> python -m venv venv
+```python -m venv venv```
 
 3. **Activate the virtual environment**:
 
 - <ins>On macOS and Linux</ins>: 
-> source venv/bin/activate
+```source venv/bin/activate```
 
 - <ins>On Windows</ins>: 
-> venv\Scripts\activate
+```venv\Scripts\activate```
 
 4. **Install the dependencies**: 
-> pip install -r requirements.txt
+```pip install -r requirements.txt```
 
 5. **Run the application**: 
-> python radio_player.py
+```python radio_player.py```
 
 
 **Radio Stations**:
