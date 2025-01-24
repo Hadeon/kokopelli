@@ -4,7 +4,7 @@ import streamlink
 from streamlink.exceptions import PluginError, NoPluginError
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import signal
+import json
 
 app = Flask(__name__)
 CORS(app)
@@ -12,12 +12,36 @@ CORS(app)
 # Global process variable for stopping playback
 current_process = None
 
-stations = {
-    "Study High": "https://study-high.rautemusik.fm/",
-    "IDM Project": "https://radio.anothermusicproject.com:8443/idm",
-    "Chillout Piano": "https://stream.epic-piano.com/chillout-piano",
-    "Radio Science": "https://radio-science.stream.laut.fm/radio-science",
-}
+# Load stations from a JSON file
+STATION_FILE = "stations.json"
+
+def load_stations():
+    if not os.path.exists(STATION_FILE):
+        with open(STATION_FILE, "w") as f:
+            json.dump({}, f)
+    with open(STATION_FILE, "r") as f:
+        return json.load(f)
+
+def save_stations(stations):
+    with open(STATION_FILE, "w") as f:
+        json.dump(stations, f, indent=4)
+
+stations = load_stations()
+
+def get_stream_metadata(url):
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format_tags", "-of", "json", url],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        metadata = json.loads(result.stdout)
+        return metadata.get("format", {}).get("tags", {})
+    except subprocess.TimeoutExpired:
+        return {"error": "Metadata extraction timed out"}
+    except Exception as e:
+        return {"error": str(e)}
 
 # Stream Online Radio
 def play_online_radio(url):
@@ -44,20 +68,21 @@ def play_online_radio(url):
         if 'best' in streams:
             stream_url = streams['best'].url
             current_process = subprocess.Popen(['ffplay', '-nodisp', '-autoexit', stream_url])
-            return {"message": f"Playing {url}"}, 200
+            metadata = get_stream_metadata(stream_url)  # Extract metadata after starting playback
+            return {"message": f"Playing {url}", "metadata": metadata}, 200
         else:
             return {"error": "No stream available for this URL"}, 404
     except NoPluginError:
         try:
             current_process = subprocess.Popen(['ffplay', '-nodisp', '-autoexit', url])
-            return {"message": f"Playing {url}"}, 200
+            metadata = get_stream_metadata(url)
+            return {"message": f"Playing {url}", "metadata": metadata}, 200
         except Exception as e:
             return {"error": f"Error: {e}"}, 500
     except PluginError as e:
         return {"error": f"Error: {e}"}, 500
 
-    
-# API Endpoints
+
 @app.route('/stations', methods=['GET'])
 def get_stations():
     search_query = request.args.get('search', '').lower()
@@ -67,7 +92,28 @@ def get_stations():
         }
         return jsonify(filtered_stations)
     return jsonify(stations)
-   
+
+@app.route('/stations', methods=['POST'])
+def add_station():
+    data = request.json
+    name = data.get('name')
+    url = data.get('url')
+    if not name or not url:
+        return jsonify({"error": "Name and URL are required"}), 400
+
+    stations[name] = url
+    save_stations(stations)
+    return jsonify({"message": f"Station {name} added successfully"}), 201
+
+@app.route('/stations/<name>', methods=['DELETE'])
+def delete_station(name):
+    if name not in stations:
+        return jsonify({"error": "Station not found"}), 404
+
+    del stations[name]
+    save_stations(stations)
+    return jsonify({"message": f"Station {name} deleted successfully"}), 200
+
 @app.route('/play', methods=['POST'])
 def api_play():
     data = request.json
@@ -82,7 +128,6 @@ def api_stop():
     global current_process
     if current_process:
         try:
-            # Terminate the process if it exists
             current_process.terminate()
             current_process.wait(timeout=2)
         except subprocess.TimeoutExpired:
